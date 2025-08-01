@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>화학반응식 계수 맞추기</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
+    h1 { color: #d35400; }
+    select, button, input { padding: 8px; margin: 5px; }
+    .question, .settings { background: #fbe9e7; padding: 15px; border-radius: 8px; margin-top: 20px; }
+    .result { font-weight: bold; margin-top: 10px; }
+    .correct { color: green; }
+    .incorrect { color: red; }
+    .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 1px solid #ccc; padding: 20px; z-index: 1000; text-align: center; }
+    .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; }
+  </style>
+</head>
+<body>
+  <h1>화학반응식 계수 맞추기</h1>
+  <p><strong>대상 및 교과:</strong> 중3 과학</p>
+
+  <div class="settings">
+    <label>난이도 (빈칸 개수):</label>
+    <select id="difficulty">
+      <option value="1">1개</option>
+      <option value="2">2개</option>
+      <option value="3">3개</option>
+    </select>
+    <label>제한 시간:</label>
+    <select id="timeLimit">
+      <option value="30">30초</option>
+      <option value="60">1분</option>
+    </select>
+    <button onclick="startQuiz()">문제 풀기</button>
+  </div>
+
+  <div class="question" id="questionBox" style="display:none;">
+    <p><strong>지문:</strong><br>화학반응식의 계수를 맞추어보자.</p>
+    <p><strong>규칙:</strong><br>
+      - 화학반응식에서 반응 전 후 원자의 종류와 개수는 변하지 않는다.
+    </p>
+    <p><strong>보기:</strong></p>
+    <p id="reaction"></p>
+    <p><strong>문제:</strong> 네모칸에 들어갈 계수는?</p>
+    <div id="inputs"></div>
+    <button onclick="checkReaction()">확인</button>
+    <p class="result" id="result"></p>
+  </div>
+
+  <div class="overlay" id="overlay"></div>
+  <div class="modal" id="timeoutModal">
+    <p id="timeoutMessage">⏰ 시간이 끝났습니다!</p>
+    <button onclick="restartQuiz()">다시 시작</button>
+  </div>
+
+  <script>
+    const reactions = [
+      { display: ['2_H2 + 1_O2 → 2_H2O'], answer: [2, 1, 2] },
+      { display: ['1_C + 1_O2 → 1_CO2'], answer: [1, 1, 1] },
+      { display: ['2_Mg + 1_O2 → 2_MgO'], answer: [2, 1, 2] },
+      { display: ['2_H2O2 → 2_H2O + 1_O2'], answer: [2, 2, 1] },
+      { display: ['1_Zn + 2_HCl → 1_ZnCl2 + 1_H2'], answer: [1, 2, 1, 1] },
+      { display: ['2_Na + 1_Cl2 → 2_NaCl'], answer: [2, 1, 2] },
+      { display: ['1_CaCO3 → 1_CaO + 1_CO2'], answer: [1, 1, 1] },
+      { display: ['1_Fe + 1_S → 1_FeS'], answer: [1, 1, 1] },
+      { display: ['2_K + 2_H2O → 2_KOH + 1_H2'], answer: [2, 2, 2, 1] },
+      { display: ['1_Cu + 2_AgNO3 → 1_Cu(NO3)2 + 2_Ag'], answer: [1, 2, 1, 2] },
+      { display: ['1_CH4 + 2_O2 → 1_CO2 + 2_H2O'], answer: [1, 2, 1, 2] },
+      { display: ['2_Al + 3_Cl2 → 2_AlCl3'], answer: [2, 3, 2] },
+      { display: ['1_N2 + 3_H2 → 2_NH3'], answer: [1, 3, 2] },
+      { display: ['1_Na2CO3 + 2_HCl → 2_NaCl + 1_CO2 + 1_H2O'], answer: [1, 2, 2, 1, 1] },
+      { display: ['2_Fe + 3_Cl2 → 2_FeCl3'], answer: [2, 3, 2] }
+    ];
+
+    let currentReaction;
+    let timer;
+    let timerRunning = false;
+    let blankIndices = [];
+
+    function startQuiz() {
+      clearTimeout(timer);
+      timerRunning = true;
+
+      document.getElementById('result').textContent = '';
+      document.getElementById('result').className = 'result';
+      document.getElementById('questionBox').style.display = 'block';
+
+      const timeLimit = parseInt(document.getElementById('timeLimit').value);
+      const difficulty = parseInt(document.getElementById('difficulty').value);
+
+      currentReaction = reactions[Math.floor(Math.random() * reactions.length)];
+      const displayRaw = currentReaction.display[0];
+      const answerArray = currentReaction.answer;
+
+      const inputsDiv = document.getElementById('inputs');
+      inputsDiv.innerHTML = '';
+      blankIndices = [];
+
+      while (blankIndices.length < difficulty) {
+        let idx = Math.floor(Math.random() * answerArray.length);
+        if (!blankIndices.includes(idx)) blankIndices.push(idx);
+      }
+      blankIndices.sort((a, b) => a - b);
+
+      const parts = displayRaw.split(/(\d+_\S+)/g).filter(Boolean);
+      let currentIndex = 0;
+      let finalHTML = '';
+
+      for (let part of parts) {
+        const match = part.match(/(\d+)_([A-Za-z0-9()]+)/);
+        if (match) {
+          const value = parseInt(match[1]);
+          const compound = match[2];
+          if (blankIndices.includes(currentIndex)) {
+            finalHTML += `<input type="number" id="input${currentIndex}" size="1" style="width:40px;">${compound} `;
+          } else {
+            finalHTML += `${value}${compound} `;
+          }
+          currentIndex++;
+        } else {
+          finalHTML += part;
+        }
+      }
+
+      document.getElementById('reaction').innerHTML = finalHTML;
+
+      timer = setTimeout(() => showTimeoutMessage(), timeLimit * 1000);
+    }
+
+    function showTimeoutMessage() {
+      timerRunning = false;
+      const correctValues = blankIndices.map(i => currentReaction.answer[i]).join(', ');
+      document.getElementById('timeoutMessage').innerHTML = `⏰ 시간이 끝났습니다!<br>정답: ${correctValues}`;
+      document.getElementById('overlay').style.display = 'block';
+      document.getElementById('timeoutModal').style.display = 'block';
+    }
+
+    function checkReaction() {
+      const inputs = document.querySelectorAll('input[type="number"]');
+      let correct = true;
+
+      inputs.forEach(input => {
+        const index = parseInt(input.id.replace('input', ''));
+        if (parseInt(input.value) !== currentReaction.answer[index]) {
+          correct = false;
+        }
+      });
+
+      if (timerRunning) {
+        clearTimeout(timer);
+        timerRunning = false;
+        if (!correct) {
+          showTimeoutMessage();
+        }
+      }
+
+      const resultText = document.getElementById('result');
+      if (correct) {
+        resultText.textContent = '정답입니다!';
+        resultText.className = 'result correct';
+      } else {
+        resultText.textContent = '오답입니다. 다시 시도해보세요!';
+        resultText.className = 'result incorrect';
+      }
+    }
+
+    function restartQuiz() {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('timeoutModal').style.display = 'none';
+      startQuiz();
+    }
+  </script>
+</body>
+</html>
